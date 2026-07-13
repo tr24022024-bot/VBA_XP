@@ -1,0 +1,67 @@
+Sub FormatTimeStatusTime_33()
+    Dim rng As Range
+    Dim c As Range
+    Dim txt As String
+    Dim p1 As Long
+    Dim p2 As Long
+    Dim fragmentLength As Long
+    On Error GoTo ErrorHandler
+    Set rng = Range("B892:G11000")
+    Application.ScreenUpdating = False
+    For Each c In rng.Cells
+        If Not IsError(c.Value2) Then
+            txt = CStr(c.Value2)
+            If Len(txt) > 0 Then
+                With c.Characters.Font
+                    .Color = vbBlack
+                    .Bold = False
+                End With
+                p1 = InStr(1, txt, " - ", vbBinaryCompare)
+                p2 = InStrRev(txt, " - ", -1, vbBinaryCompare)
+                If p1 > 0 Then
+                    If p1 > 1 Then
+                        With c.Characters(1, p1 - 1).Font
+                            .Color = RGB(255, 0, 0)
+                            .Bold = True
+                        End With
+                    End If
+                    If p2 > p1 Then
+                        fragmentLength = Len(txt) - p2 - 2
+                        If fragmentLength > 0 Then
+                            With c.Characters(p2 + 3, fragmentLength).Font
+                                .Color = RGB(255, 0, 0)
+                                .Bold = True
+                            End With
+                        End If
+                        fragmentLength = p2 - p1 - 3
+                        If fragmentLength > 0 Then
+                            With c.Characters(p1 + 3, fragmentLength).Font
+                                .Color = RGB(0, 0, 0)
+                                .Bold = True
+                            End With
+                        End If
+                    Else
+                        fragmentLength = Len(txt) - p1 - 2
+                        If fragmentLength > 0 Then
+                            With c.Characters(p1 + 3, fragmentLength).Font
+                                .Color = RGB(0, 0, 255)
+                                .Bold = True
+                            End With
+                        End If
+                    End If
+                End If
+            End If
+        End If
+    Next c
+    Application.ScreenUpdating = True
+    Application.OnTime _
+        EarliestTime:=Now + TimeValue("00:00:33"), _
+        Procedure:="FormatTimeStatusTime_33"
+    Exit Sub
+ErrorHandler:
+    Application.ScreenUpdating = True
+    MsgBox "ПРИЛЕТЕЛ" & Err.Number & vbCrLf & _
+           Err.Description, _
+           vbExclamation, _
+           "FormatTimeStatusTime_33"
+End Sub

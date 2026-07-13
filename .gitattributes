@@ -1,0 +1,6 @@
+*.bas text eol=crlf
+*.cls text eol=crlf
+*.frm text eol=crlf
+*.ps1 text eol=crlf
+*.md text eol=lf
+*.csv text eol=crlf

@@ -1,0 +1,1046 @@
+Option Explicit
+
+Private Const SETTINGS_SHEET As String = "Настройки"
+Private Const AGENTS_SHEET As String = "Агенты"
+
+Private Const SECONDS_IN_DAY As Double = 86400#
+Private Const PI_VALUE As Double = 3.14159265358979
+
+'=========================================================
+' СОЗДАНИЕ ЛИСТОВ И НАЧАЛЬНЫХ НАСТРОЕК
+'=========================================================
+Public Sub CreateDynamicCalendarModel()
+
+    Dim wsSettings As Worksheet
+    Dim wsAgents As Worksheet
+
+    Application.ScreenUpdating = False
+
+    Set wsSettings = GetOrCreateSheet(SETTINGS_SHEET)
+    Set wsAgents = GetOrCreateSheet(AGENTS_SHEET)
+
+    PrepareSettingsSheet wsSettings
+    PrepareAgentsSheet wsAgents
+
+    Application.ScreenUpdating = True
+
+    MsgBox _
+        "Динамическая календарная модель создана.", _
+        vbInformation
+
+End Sub
+
+'=========================================================
+' ПОДГОТОВКА ЛИСТА НАСТРОЕК
+'=========================================================
+Private Sub PrepareSettingsSheet(ByVal ws As Worksheet)
+
+    With ws
+
+        .Cells.Clear
+
+        .Range("A1").Value = "Начальная дата и время"
+        .Range("B1").Value = DateSerial(2026, 7, 17) + _
+                             TimeSerial(18, 0, 0)
+
+        .Range("A2").Value = "Календарная система"
+        .Range("B2").Value = "ДИНАМИЧЕСКИЙ"
+
+        .Range("A3").Value = "Шаг обновления, секунд"
+        .Range("B3").Value = 1
+
+        .Range("A4").Value = "Базовый коэффициент времени"
+        .Range("B4").Value = 1
+
+        .Range("A5").Value = "Вес солнечного цикла"
+        .Range("B5").Value = 0.35
+
+        .Range("A6").Value = "Вес лунного цикла"
+        .Range("B6").Value = 0.25
+
+        .Range("A7").Value = "Вес недельного цикла ISO"
+        .Range("B7").Value = 0.2
+
+        .Range("A8").Value = "Вес пользовательского цикла"
+        .Range("B8").Value = 0.2
+
+        .Range("A9").Value = "Длина пользовательского цикла, секунд"
+        .Range("B9").Value = 60
+
+        .Range("A10").Value = "Система запущена"
+        .Range("B10").Value = False
+
+        .Range("A11").Value = "Накопленное системное время, секунд"
+        .Range("B11").Value = 0
+
+        .Range("A12").Value = "Последнее реальное обновление"
+        .Range("B12").ClearContents
+
+        .Range("A13").Value = "Текущая дата симуляции"
+        .Range("B13").Value = .Range("B1").Value
+
+        .Range("A14").Value = "Общий динамический коэффициент"
+        .Range("B14").Value = 1
+
+        .Range("A15").Value = "Календарная метка"
+        .Range("B15").Value = BuildCalendarLabel( _
+            .Range("B1").Value, _
+            .Range("B2").Value _
+        )
+
+        .Range("A16").Value = "Состояние системы"
+        .Range("B16").Value = "ОСТАНОВЛЕНА"
+
+        .Range("A17").Value = "Реально прошло, секунд"
+        .Range("B17").Value = 0
+
+        .Range("A18").Value = "Следующий запуск таймера"
+        .Range("B18").ClearContents
+
+        .Range("A20").Value = "Солнечный коэффициент"
+        .Range("B20").Value = 1
+
+        .Range("A21").Value = "Лунный коэффициент"
+        .Range("B21").Value = 1
+
+        .Range("A22").Value = "Коэффициент ISO"
+        .Range("B22").Value = 1
+
+        .Range("A23").Value = "Пользовательский коэффициент"
+        .Range("B23").Value = 1
+
+        .Range("A24").Value = "Фаза пользовательского цикла"
+        .Range("B24").Value = 0
+
+        .Range("A1:A24").Font.Bold = True
+
+        .Columns("A").ColumnWidth = 42
+        .Columns("B").ColumnWidth = 35
+
+        .Range("B1").NumberFormat = "dd.mm.yyyy hh:mm:ss"
+        .Range("B12:B13").NumberFormat = "dd.mm.yyyy hh:mm:ss"
+        .Range("B18").NumberFormat = "dd.mm.yyyy hh:mm:ss"
+
+        .Range("B4:B8").NumberFormat = "0.000"
+        .Range("B11:B17").NumberFormat = "0.000"
+        .Range("B20:B24").NumberFormat = "0.000"
+
+    End With
+
+End Sub
+
+'=========================================================
+' ПОДГОТОВКА ЛИСТА АГЕНТОВ
+'=========================================================
+Private Sub PrepareAgentsSheet(ByVal ws As Worksheet)
+
+    Dim headers As Variant
+    Dim i As Long
+
+    headers = Array( _
+        "Идентификатор", _
+        "Начальная X", _
+        "Начальная Y", _
+        "Начальная Z", _
+        "Скорость X", _
+        "Скорость Y", _
+        "Скорость Z", _
+        "Задержка", _
+        "Текущая X", _
+        "Текущая Y", _
+        "Текущая Z", _
+        "Время агента", _
+        "Дата системы", _
+        "Солнечный K", _
+        "Лунный K", _
+        "ISO K", _
+        "Пользовательский K", _
+        "Общий K", _
+        "Состояние" _
+    )
+
+    ws.Cells.Clear
+
+    For i = LBound(headers) To UBound(headers)
+        ws.Cells(1, i + 1).Value = headers(i)
+    Next i
+
+    With ws.Range("A1:S1")
+        .Font.Bold = True
+        .HorizontalAlignment = xlCenter
+    End With
+
+    'Пример трёх условных агентов.
+    ws.Range("A2").Value = "Агент-01"
+    ws.Range("B2").Value = 0
+    ws.Range("C2").Value = 0
+    ws.Range("D2").Value = 100
+    ws.Range("E2").Value = 5
+    ws.Range("F2").Value = 2
+    ws.Range("G2").Value = 0
+    ws.Range("H2").Value = 0
+
+    ws.Range("A3").Value = "Агент-02"
+    ws.Range("B3").Value = 20
+    ws.Range("C3").Value = -10
+    ws.Range("D3").Value = 120
+    ws.Range("E3").Value = 4
+    ws.Range("F3").Value = 3
+    ws.Range("G3").Value = 0.1
+    ws.Range("H3").Value = 10
+
+    ws.Range("A4").Value = "Агент-03"
+    ws.Range("B4").Value = -20
+    ws.Range("C4").Value = 15
+    ws.Range("D4").Value = 80
+    ws.Range("E4").Value = 6
+    ws.Range("F4").Value = -1
+    ws.Range("G4").Value = -0.05
+    ws.Range("H4").Value = 20
+
+    ws.Columns("A").ColumnWidth = 16
+    ws.Columns("B:L").ColumnWidth = 13
+    ws.Columns("M").ColumnWidth = 45
+    ws.Columns("N:S").ColumnWidth = 16
+
+    ws.Range("B2:L1000").NumberFormat = "0.000"
+    ws.Range("N2:R1000").NumberFormat = "0.000"
+
+    ResetAgentPositions ws
+
+End Sub
+
+'=========================================================
+' ПОЛНЫЙ ЗАПУСК С НУЛЕВОГО СОСТОЯНИЯ
+'=========================================================
+Public Sub StartDynamicCalendar()
+
+    Dim wsSettings As Worksheet
+    Dim wsAgents As Worksheet
+
+    Set wsSettings = ThisWorkbook.Worksheets(SETTINGS_SHEET)
+    Set wsAgents = ThisWorkbook.Worksheets(AGENTS_SHEET)
+
+    CancelDynamicTimer
+
+    If Not IsDate(wsSettings.Range("B1").Value) Then
+
+        MsgBox _
+            "В ячейке Настройки!B1 должна находиться дата.", _
+            vbExclamation
+
+        Exit Sub
+
+    End If
+
+    If SafeNumber(wsSettings.Range("B3").Value, 1) < 1 Then
+        wsSettings.Range("B3").Value = 1
+    End If
+
+    wsSettings.Range("B10").Value = True
+    wsSettings.Range("B11").Value = 0
+    wsSettings.Range("B12").Value = Now
+    wsSettings.Range("B13").Value = wsSettings.Range("B1").Value
+    wsSettings.Range("B14").Value = 1
+    wsSettings.Range("B16").Value = "ЗАПУСК"
+    wsSettings.Range("B17").Value = 0
+
+    ResetAgentPositions wsAgents
+
+    DynamicCalendarTick
+
+End Sub
+
+'=========================================================
+' ПРОДОЛЖЕНИЕ ПОСЛЕ ПАУЗЫ
+'=========================================================
+Public Sub ResumeDynamicCalendar()
+
+    Dim wsSettings As Worksheet
+
+    Set wsSettings = ThisWorkbook.Worksheets(SETTINGS_SHEET)
+
+    CancelDynamicTimer
+
+    wsSettings.Range("B10").Value = True
+    wsSettings.Range("B12").Value = Now
+    wsSettings.Range("B16").Value = "ВОЗОБНОВЛЕНИЕ"
+
+    DynamicCalendarTick
+
+End Sub
+
+'=========================================================
+' ОСТАНОВКА БЕЗ СБРОСА СОСТОЯНИЯ
+'=========================================================
+Public Sub StopDynamicCalendar()
+
+    Dim wsSettings As Worksheet
+
+    Set wsSettings = ThisWorkbook.Worksheets(SETTINGS_SHEET)
+
+    CancelDynamicTimer
+
+    wsSettings.Range("B10").Value = False
+    wsSettings.Range("B16").Value = "ПАУЗА"
+
+End Sub
+
+'=========================================================
+' ПОЛНЫЙ СБРОС
+'=========================================================
+Public Sub ResetDynamicCalendar()
+
+    Dim wsSettings As Worksheet
+    Dim wsAgents As Worksheet
+
+    Set wsSettings = ThisWorkbook.Worksheets(SETTINGS_SHEET)
+    Set wsAgents = ThisWorkbook.Worksheets(AGENTS_SHEET)
+
+    CancelDynamicTimer
+
+    wsSettings.Range("B10").Value = False
+    wsSettings.Range("B11").Value = 0
+    wsSettings.Range("B12").ClearContents
+    wsSettings.Range("B13").Value = wsSettings.Range("B1").Value
+    wsSettings.Range("B14").Value = 1
+    wsSettings.Range("B15").Value = BuildCalendarLabel( _
+        wsSettings.Range("B1").Value, _
+        wsSettings.Range("B2").Value _
+    )
+    wsSettings.Range("B16").Value = "СБРОС"
+    wsSettings.Range("B17").Value = 0
+    wsSettings.Range("B18").ClearContents
+
+    ResetAgentPositions wsAgents
+
+End Sub
+
+'=========================================================
+' ОСНОВНОЙ ДИНАМИЧЕСКИЙ ТАКТ
+'=========================================================
+Public Sub DynamicCalendarTick()
+
+    Dim wsSettings As Worksheet
+    Dim wsAgents As Worksheet
+
+    Dim currentRealTime As Date
+    Dim previousRealTime As Date
+    Dim simulationDate As Date
+
+    Dim realDeltaSeconds As Double
+    Dim accumulatedSystemSeconds As Double
+    Dim totalRealSeconds As Double
+
+    Dim baseCoefficient As Double
+    Dim solarCoefficient As Double
+    Dim lunarCoefficient As Double
+    Dim isoCoefficient As Double
+    Dim userCoefficient As Double
+    Dim totalCoefficient As Double
+    Dim userPhase As Double
+
+    Dim solarWeight As Double
+    Dim lunarWeight As Double
+    Dim isoWeight As Double
+    Dim userWeight As Double
+
+    Dim userCycleLength As Double
+    Dim updateStep As Long
+    Dim nextRun As Date
+
+    On Error GoTo ErrorHandler
+
+    Set wsSettings = ThisWorkbook.Worksheets(SETTINGS_SHEET)
+    Set wsAgents = ThisWorkbook.Worksheets(AGENTS_SHEET)
+
+    If CBool(wsSettings.Range("B10").Value) = False Then Exit Sub
+
+    currentRealTime = Now
+
+    If IsDate(wsSettings.Range("B12").Value) Then
+        previousRealTime = wsSettings.Range("B12").Value
+    Else
+        previousRealTime = currentRealTime
+    End If
+
+    realDeltaSeconds = _
+        (currentRealTime - previousRealTime) * SECONDS_IN_DAY
+
+    If realDeltaSeconds < 0 Then
+        realDeltaSeconds = 0
+    End If
+
+    simulationDate = CDate(wsSettings.Range("B13").Value)
+    simulationDate = simulationDate + _
+                     realDeltaSeconds / SECONDS_IN_DAY
+
+    accumulatedSystemSeconds = _
+        SafeNumber(wsSettings.Range("B11").Value, 0)
+
+    totalRealSeconds = _
+        SafeNumber(wsSettings.Range("B17").Value, 0) + _
+        realDeltaSeconds
+
+    baseCoefficient = _
+        SafeNumber(wsSettings.Range("B4").Value, 1)
+
+    solarWeight = _
+        PositiveNumber(wsSettings.Range("B5").Value)
+
+    lunarWeight = _
+        PositiveNumber(wsSettings.Range("B6").Value)
+
+    isoWeight = _
+        PositiveNumber(wsSettings.Range("B7").Value)
+
+    userWeight = _
+        PositiveNumber(wsSettings.Range("B8").Value)
+
+    userCycleLength = _
+        SafeNumber(wsSettings.Range("B9").Value, 60)
+
+    If userCycleLength <= 0 Then
+        userCycleLength = 60
+    End If
+
+    solarCoefficient = GetSolarCoefficient(simulationDate)
+    lunarCoefficient = GetLunarCoefficient(simulationDate)
+    isoCoefficient = GetISOCoefficient(simulationDate)
+
+    userCoefficient = GetUserCycleCoefficient( _
+        accumulatedSystemSeconds, _
+        userCycleLength, _
+        userPhase _
+    )
+
+    totalCoefficient = CalculateTotalCoefficient( _
+        baseCoefficient, _
+        solarCoefficient, _
+        lunarCoefficient, _
+        isoCoefficient, _
+        userCoefficient, _
+        solarWeight, _
+        lunarWeight, _
+        isoWeight, _
+        userWeight _
+    )
+
+    'Накопительный принцип внутреннего времени.
+    accumulatedSystemSeconds = _
+        accumulatedSystemSeconds + _
+        totalCoefficient * realDeltaSeconds
+
+    wsSettings.Range("B11").Value = accumulatedSystemSeconds
+    wsSettings.Range("B12").Value = currentRealTime
+    wsSettings.Range("B13").Value = simulationDate
+    wsSettings.Range("B14").Value = totalCoefficient
+    wsSettings.Range("B15").Value = BuildCalendarLabel( _
+        simulationDate, _
+        CStr(wsSettings.Range("B2").Value) _
+    )
+    wsSettings.Range("B16").Value = _
+        GetSystemState(totalCoefficient)
+    wsSettings.Range("B17").Value = totalRealSeconds
+
+    wsSettings.Range("B20").Value = solarCoefficient
+    wsSettings.Range("B21").Value = lunarCoefficient
+    wsSettings.Range("B22").Value = isoCoefficient
+    wsSettings.Range("B23").Value = userCoefficient
+    wsSettings.Range("B24").Value = userPhase
+
+    UpdateAllAgents _
+        wsAgents, _
+        simulationDate, _
+        accumulatedSystemSeconds, _
+        solarCoefficient, _
+        lunarCoefficient, _
+        isoCoefficient, _
+        userCoefficient, _
+        totalCoefficient, _
+        CStr(wsSettings.Range("B2").Value)
+
+    updateStep = CLng(SafeNumber(wsSettings.Range("B3").Value, 1))
+
+    If updateStep < 1 Then updateStep = 1
+
+    nextRun = Now + TimeSerial(0, 0, updateStep)
+
+    wsSettings.Range("B18").Value = nextRun
+
+    Application.OnTime _
+        EarliestTime:=nextRun, _
+        Procedure:=TimerProcedureName(), _
+        Schedule:=True
+
+    Exit Sub
+
+ErrorHandler:
+
+    On Error Resume Next
+
+    wsSettings.Range("B10").Value = False
+    wsSettings.Range("B16").Value = _
+        "ОШИБКА: " & Err.Description
+
+    On Error GoTo 0
+
+    MsgBox _
+        "Ошибка динамической модели: " & Err.Description, _
+        vbCritical
+
+End Sub
+
+'=========================================================
+' ОБНОВЛЕНИЕ ВСЕХ АГЕНТОВ
+'=========================================================
+Private Sub UpdateAllAgents( _
+    ByVal ws As Worksheet, _
+    ByVal simulationDate As Date, _
+    ByVal systemSeconds As Double, _
+    ByVal solarK As Double, _
+    ByVal lunarK As Double, _
+    ByVal isoK As Double, _
+    ByVal userK As Double, _
+    ByVal totalK As Double, _
+    ByVal calendarMode As String _
+)
+
+    Dim lastRow As Long
+    Dim currentRow As Long
+
+    Dim startX As Double
+    Dim startY As Double
+    Dim startZ As Double
+
+    Dim velocityX As Double
+    Dim velocityY As Double
+    Dim velocityZ As Double
+
+    Dim delaySeconds As Double
+    Dim agentSeconds As Double
+
+    Dim currentX As Double
+    Dim currentY As Double
+    Dim currentZ As Double
+
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+
+    Application.ScreenUpdating = False
+
+    For currentRow = 2 To lastRow
+
+        If Trim$(CStr(ws.Cells(currentRow, "A").Value)) <> "" Then
+
+            startX = SafeNumber(ws.Cells(currentRow, "B").Value, 0)
+            startY = SafeNumber(ws.Cells(currentRow, "C").Value, 0)
+            startZ = SafeNumber(ws.Cells(currentRow, "D").Value, 0)
+
+            velocityX = SafeNumber(ws.Cells(currentRow, "E").Value, 0)
+            velocityY = SafeNumber(ws.Cells(currentRow, "F").Value, 0)
+            velocityZ = SafeNumber(ws.Cells(currentRow, "G").Value, 0)
+
+            delaySeconds = _
+                SafeNumber(ws.Cells(currentRow, "H").Value, 0)
+
+            agentSeconds = systemSeconds - delaySeconds
+
+            If agentSeconds < 0 Then
+
+                currentX = startX
+                currentY = startY
+                currentZ = startZ
+
+                ws.Cells(currentRow, "S").Value = _
+                    "ОЖИДАНИЕ"
+
+                agentSeconds = 0
+
+            Else
+
+                currentX = startX + velocityX * agentSeconds
+                currentY = startY + velocityY * agentSeconds
+                currentZ = startZ + velocityZ * agentSeconds
+
+                If currentZ <= 0 Then
+
+                    currentZ = 0
+
+                    ws.Cells(currentRow, "S").Value = _
+                        "НИЖНЯЯ ГРАНИЦА"
+
+                ElseIf totalK < 0 Then
+
+                    ws.Cells(currentRow, "S").Value = _
+                        "ОБРАТНЫЙ ХОД"
+
+                Else
+
+                    ws.Cells(currentRow, "S").Value = _
+                        "АКТИВЕН"
+
+                End If
+
+            End If
+
+            ws.Cells(currentRow, "I").Value = Round(currentX, 3)
+            ws.Cells(currentRow, "J").Value = Round(currentY, 3)
+            ws.Cells(currentRow, "K").Value = Round(currentZ, 3)
+            ws.Cells(currentRow, "L").Value = Round(agentSeconds, 3)
+
+            ws.Cells(currentRow, "M").Value = _
+                BuildCalendarLabel( _
+                    simulationDate, _
+                    calendarMode _
+                )
+
+            ws.Cells(currentRow, "N").Value = solarK
+            ws.Cells(currentRow, "O").Value = lunarK
+            ws.Cells(currentRow, "P").Value = isoK
+            ws.Cells(currentRow, "Q").Value = userK
+            ws.Cells(currentRow, "R").Value = totalK
+
+        End If
+
+    Next currentRow
+
+    Application.ScreenUpdating = True
+
+End Sub
+
+'=========================================================
+' СОЛНЕЧНЫЙ КОЭФФИЦИЕНТ
+'
+' Учебная модель:
+' день      = 1,00
+' сумерки   = 0,80
+' ночь      = 0,55
+'=========================================================
+Private Function GetSolarCoefficient( _
+    ByVal currentDate As Date _
+) As Double
+
+    Dim decimalHour As Double
+
+    decimalHour = _
+        Hour(currentDate) + _
+        Minute(currentDate) / 60# + _
+        Second(currentDate) / 3600#
+
+    Select Case decimalHour
+
+        Case 6 To 18
+            GetSolarCoefficient = 1#
+
+        Case 5 To 6, 18 To 19
+            GetSolarCoefficient = 0.8
+
+        Case Else
+            GetSolarCoefficient = 0.55
+
+    End Select
+
+End Function
+
+'=========================================================
+' ПРИБЛИЖЁННЫЙ ЛУННЫЙ КОЭФФИЦИЕНТ
+'
+' Цикл: 29,530588853 суток.
+' Коэффициент изменяется примерно от 0,75 до 1,00.
+' Это учебный циклический расчёт, не эфемеридная система.
+'=========================================================
+Private Function GetLunarCoefficient( _
+    ByVal currentDate As Date _
+) As Double
+
+    Dim referenceDate As Date
+    Dim lunarPeriod As Double
+    Dim elapsedDays As Double
+    Dim lunarAge As Double
+    Dim lunarPhase As Double
+
+    referenceDate = _
+        DateSerial(2000, 1, 6) + _
+        TimeSerial(18, 14, 0)
+
+    lunarPeriod = 29.530588853
+
+    elapsedDays = currentDate - referenceDate
+
+    lunarAge = elapsedDays - _
+               Int(elapsedDays / lunarPeriod) * lunarPeriod
+
+    If lunarAge < 0 Then
+        lunarAge = lunarAge + lunarPeriod
+    End If
+
+    lunarPhase = lunarAge / lunarPeriod
+
+    GetLunarCoefficient = _
+        0.75 + _
+        0.25 * _
+        (1# - Cos(2# * PI_VALUE * lunarPhase)) / 2#
+
+End Function
+
+'=========================================================
+' КОЭФФИЦИЕНТ РАБОЧЕЙ НЕДЕЛИ ISO
+'=========================================================
+Private Function GetISOCoefficient( _
+    ByVal currentDate As Date _
+) As Double
+
+    Dim dayNumber As Long
+
+    dayNumber = Weekday(currentDate, vbMonday)
+
+    If dayNumber <= 5 Then
+        GetISOCoefficient = 1#
+    Else
+        GetISOCoefficient = 0.65
+    End If
+
+End Function
+
+'=========================================================
+' ПОЛЬЗОВАТЕЛЬСКИЙ ЦИКЛ
+'
+' Коэффициент колеблется от 0,75 до 1,25.
+'=========================================================
+Private Function GetUserCycleCoefficient( _
+    ByVal systemSeconds As Double, _
+    ByVal cycleLength As Double, _
+    ByRef cyclePhase As Double _
+) As Double
+
+    Dim normalizedPosition As Double
+
+    If cycleLength <= 0 Then cycleLength = 60
+
+    normalizedPosition = _
+        systemSeconds - _
+        Int(systemSeconds / cycleLength) * cycleLength
+
+    cyclePhase = normalizedPosition / cycleLength
+
+    GetUserCycleCoefficient = _
+        1# + _
+        0.25 * Sin(2# * PI_VALUE * cyclePhase)
+
+End Function
+
+'=========================================================
+' ОБЪЕДИНЕНИЕ КАЛЕНДАРНЫХ КОЭФФИЦИЕНТОВ
+'=========================================================
+Private Function CalculateTotalCoefficient( _
+    ByVal baseK As Double, _
+    ByVal solarK As Double, _
+    ByVal lunarK As Double, _
+    ByVal isoK As Double, _
+    ByVal userK As Double, _
+    ByVal solarWeight As Double, _
+    ByVal lunarWeight As Double, _
+    ByVal isoWeight As Double, _
+    ByVal userWeight As Double _
+) As Double
+
+    Dim totalWeight As Double
+    Dim weightedCoefficient As Double
+
+    totalWeight = _
+        solarWeight + _
+        lunarWeight + _
+        isoWeight + _
+        userWeight
+
+    If totalWeight <= 0 Then
+
+        CalculateTotalCoefficient = baseK
+        Exit Function
+
+    End If
+
+    weightedCoefficient = _
+        solarK * solarWeight + _
+        lunarK * lunarWeight + _
+        isoK * isoWeight + _
+        userK * userWeight
+
+    weightedCoefficient = weightedCoefficient / totalWeight
+
+    CalculateTotalCoefficient = _
+        baseK * weightedCoefficient
+
+End Function
+
+'=========================================================
+' СОСТОЯНИЕ СИСТЕМЫ ПО ОБЩЕМУ КОЭФФИЦИЕНТУ
+'=========================================================
+Private Function GetSystemState( _
+    ByVal totalCoefficient As Double _
+) As String
+
+    Select Case totalCoefficient
+
+        Case Is < 0
+            GetSystemState = "ОБРАТНЫЙ ХОД"
+
+        Case Is < 0.75
+            GetSystemState = "ЗАМЕДЛЕНИЕ"
+
+        Case 0.75 To 1.25
+            GetSystemState = "НОРМАЛЬНЫЙ ЦИКЛ"
+
+        Case Else
+            GetSystemState = "УСКОРЕНИЕ"
+
+    End Select
+
+End Function
+
+'=========================================================
+' КАЛЕНДАРНАЯ МЕТКА
+'=========================================================
+Private Function BuildCalendarLabel( _
+    ByVal sourceDate As Date, _
+    ByVal calendarMode As String _
+) As String
+
+    Dim modeText As String
+    Dim julianDate As Date
+    Dim unixSeconds As Double
+    Dim isoWeek As Long
+    Dim isoYear As Long
+
+    modeText = UCase$(Trim$(calendarMode))
+
+    isoWeek = DatePart( _
+        "ww", _
+        sourceDate, _
+        vbMonday, _
+        vbFirstFourDays _
+    )
+
+    isoYear = GetISOYear(sourceDate)
+
+    unixSeconds = DateDiff( _
+        "s", _
+        DateSerial(1970, 1, 1), _
+        sourceDate _
+    )
+
+    Select Case modeText
+
+        Case "ГРИГОРИАНСКИЙ"
+
+            BuildCalendarLabel = _
+                Format$(sourceDate, "dd.mm.yyyy hh:nn:ss")
+
+        Case "ЮЛИАНСКИЙ"
+
+            'Для XXI века используется разница 13 суток.
+            julianDate = DateAdd("d", -13, sourceDate)
+
+            BuildCalendarLabel = _
+                Format$(julianDate, "dd.mm.yyyy hh:nn:ss") & _
+                " ЮК"
+
+        Case "ISO"
+
+            BuildCalendarLabel = _
+                CStr(isoYear) & _
+                "-W" & Format$(isoWeek, "00") & _
+                "-" & CStr(Weekday(sourceDate, vbMonday)) & _
+                " " & Format$(sourceDate, "hh:nn:ss")
+
+        Case "UNIX"
+
+            BuildCalendarLabel = _
+                "Unix " & Format$(unixSeconds, "0")
+
+        Case Else
+
+            julianDate = DateAdd("d", -13, sourceDate)
+
+            BuildCalendarLabel = _
+                "ГК " & _
+                Format$(sourceDate, "dd.mm.yyyy hh:nn:ss") & _
+                " | ЮК " & _
+                Format$(julianDate, "dd.mm.yyyy") & _
+                " | ISO " & _
+                CStr(isoYear) & _
+                "-W" & Format$(isoWeek, "00") & _
+                "-" & CStr(Weekday(sourceDate, vbMonday)) & _
+                " | Unix " & Format$(unixSeconds, "0")
+
+    End Select
+
+End Function
+
+'=========================================================
+' ОПРЕДЕЛЕНИЕ ГОДА ISO
+'=========================================================
+Private Function GetISOYear( _
+    ByVal sourceDate As Date _
+) As Long
+
+    Dim thursdayDate As Date
+
+    thursdayDate = _
+        sourceDate - _
+        Weekday(sourceDate, vbMonday) + 4
+
+    GetISOYear = Year(thursdayDate)
+
+End Function
+
+'=========================================================
+' СБРОС ПОЗИЦИЙ АГЕНТОВ
+'=========================================================
+Private Sub ResetAgentPositions(ByVal ws As Worksheet)
+
+    Dim lastRow As Long
+    Dim currentRow As Long
+
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+
+    For currentRow = 2 To lastRow
+
+        If Trim$(CStr(ws.Cells(currentRow, "A").Value)) <> "" Then
+
+            ws.Cells(currentRow, "I").Value = _
+                SafeNumber(ws.Cells(currentRow, "B").Value, 0)
+
+            ws.Cells(currentRow, "J").Value = _
+                SafeNumber(ws.Cells(currentRow, "C").Value, 0)
+
+            ws.Cells(currentRow, "K").Value = _
+                SafeNumber(ws.Cells(currentRow, "D").Value, 0)
+
+            ws.Cells(currentRow, "L").Value = 0
+            ws.Cells(currentRow, "M").ClearContents
+
+            ws.Cells(currentRow, "N").Value = 1
+            ws.Cells(currentRow, "O").Value = 1
+            ws.Cells(currentRow, "P").Value = 1
+            ws.Cells(currentRow, "Q").Value = 1
+            ws.Cells(currentRow, "R").Value = 1
+
+            ws.Cells(currentRow, "S").Value = "ОЖИДАНИЕ"
+
+        End If
+
+    Next currentRow
+
+End Sub
+
+'=========================================================
+' ОТМЕНА ЗАПЛАНИРОВАННОГО ТАЙМЕРА
+'=========================================================
+Private Sub CancelDynamicTimer()
+
+    Dim wsSettings As Worksheet
+    Dim scheduledTime As Variant
+
+    On Error Resume Next
+
+    Set wsSettings = ThisWorkbook.Worksheets(SETTINGS_SHEET)
+
+    scheduledTime = wsSettings.Range("B18").Value
+
+    If IsDate(scheduledTime) Then
+
+        Application.OnTime _
+            EarliestTime:=CDate(scheduledTime), _
+            Procedure:=TimerProcedureName(), _
+            Schedule:=False
+
+    End If
+
+    wsSettings.Range("B18").ClearContents
+
+    On Error GoTo 0
+
+End Sub
+
+'=========================================================
+' ИМЯ ПРОЦЕДУРЫ ДЛЯ APPLICATION.ONTIME
+'=========================================================
+Private Function TimerProcedureName() As String
+
+    TimerProcedureName = _
+        "'" & _
+        Replace(ThisWorkbook.Name, "'", "''") & _
+        "'!DynamicCalendarTick"
+
+End Function
+
+'=========================================================
+' СОЗДАНИЕ ИЛИ ПОЛУЧЕНИЕ ЛИСТА
+'=========================================================
+Private Function GetOrCreateSheet( _
+    ByVal sheetName As String _
+) As Worksheet
+
+    On Error Resume Next
+
+    Set GetOrCreateSheet = _
+        ThisWorkbook.Worksheets(sheetName)
+
+    On Error GoTo 0
+
+    If GetOrCreateSheet Is Nothing Then
+
+        Set GetOrCreateSheet = _
+            ThisWorkbook.Worksheets.Add( _
+                After:=ThisWorkbook.Worksheets( _
+                    ThisWorkbook.Worksheets.Count _
+                ) _
+            )
+
+        GetOrCreateSheet.Name = sheetName
+
+    End If
+
+End Function
+
+'=========================================================
+' БЕЗОПАСНОЕ ЧТЕНИЕ ЧИСЛА
+'=========================================================
+Private Function SafeNumber( _
+    ByVal sourceValue As Variant, _
+    ByVal defaultValue As Double _
+) As Double
+
+    If IsError(sourceValue) Then
+
+        SafeNumber = defaultValue
+
+    ElseIf IsNumeric(sourceValue) Then
+
+        SafeNumber = CDbl(sourceValue)
+
+    Else
+
+        SafeNumber = defaultValue
+
+    End If
+
+End Function
+
+'=========================================================
+' ЧТЕНИЕ ТОЛЬКО НЕОТРИЦАТЕЛЬНЫХ ВЕСОВ
+'=========================================================
+Private Function PositiveNumber( _
+    ByVal sourceValue As Variant _
+) As Double
+
+    Dim resultValue As Double
+
+    resultValue = SafeNumber(sourceValue, 0)
+
+    If resultValue < 0 Then resultValue = 0
+
+    PositiveNumber = resultValue
+
+End Function

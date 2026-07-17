@@ -1,0 +1,293 @@
+Option Explicit
+
+Private NextRun As Date
+Private SimulationStarted As Boolean
+Private RealStartTime As Date
+
+'=========================================================
+' ЗАПУСК УЧЕБНОЙ СИМУЛЯЦИИ
+'=========================================================
+Public Sub StartDroneSimulation()
+
+    Dim wsSettings As Worksheet
+    Dim wsDrones As Worksheet
+
+    On Error GoTo ErrorHandler
+
+    Set wsSettings = ThisWorkbook.Worksheets("Настройки")
+    Set wsDrones = ThisWorkbook.Worksheets("Аппараты")
+
+    If Not IsDate(wsSettings.Range("B1").Value) Then
+        MsgBox "В ячейке Настройки!B1 должна находиться дата и время.", _
+               vbExclamation
+        Exit Sub
+    End If
+
+    If Val(wsSettings.Range("B3").Value) < 1 Then
+        wsSettings.Range("B3").Value = 1
+    End If
+
+    RealStartTime = Now
+    SimulationStarted = True
+
+    wsSettings.Range("B5").Value = "Симуляция работает"
+    wsSettings.Range("B6").Value = RealStartTime
+
+    UpdateDroneSimulation
+
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Ошибка запуска: " & Err.Description, vbCritical
+
+End Sub
+
+'=========================================================
+' ОСТАНОВКА СИМУЛЯЦИИ
+'=========================================================
+Public Sub StopDroneSimulation()
+
+    On Error Resume Next
+
+    SimulationStarted = False
+
+    If NextRun > 0 Then
+        Application.OnTime _
+            EarliestTime:=NextRun, _
+            Procedure:="UpdateDroneSimulation", _
+            Schedule:=False
+    End If
+
+    ThisWorkbook.Worksheets("Настройки").Range("B5").Value = _
+        "Симуляция остановлена"
+
+    On Error GoTo 0
+
+End Sub
+
+'=========================================================
+' ОБНОВЛЕНИЕ КООРДИНАТ УЧЕБНЫХ АГЕНТОВ
+'=========================================================
+Public Sub UpdateDroneSimulation()
+
+    Dim wsSettings As Worksheet
+    Dim wsDrones As Worksheet
+
+    Dim simulationDate As Date
+    Dim realElapsedSeconds As Double
+    Dim agentElapsedSeconds As Double
+    Dim launchDelay As Double
+
+    Dim startX As Double
+    Dim startY As Double
+    Dim startZ As Double
+
+    Dim velocityX As Double
+    Dim velocityY As Double
+    Dim velocityZ As Double
+
+    Dim currentX As Double
+    Dim currentY As Double
+    Dim currentZ As Double
+
+    Dim calendarSystem As String
+    Dim calendarText As String
+
+    Dim lastRow As Long
+    Dim rowNumber As Long
+    Dim updateStep As Long
+
+    On Error GoTo ErrorHandler
+
+    If SimulationStarted = False Then Exit Sub
+
+    Set wsSettings = ThisWorkbook.Worksheets("Настройки")
+    Set wsDrones = ThisWorkbook.Worksheets("Аппараты")
+
+    updateStep = CLng(Val(wsSettings.Range("B3").Value))
+
+    If updateStep < 1 Then updateStep = 1
+
+    realElapsedSeconds = DateDiff("s", RealStartTime, Now)
+
+    simulationDate = _
+        CDate(wsSettings.Range("B1").Value) + _
+        realElapsedSeconds / 86400#
+
+    calendarSystem = _
+        UCase$(Trim$(CStr(wsSettings.Range("B2").Value)))
+
+    calendarText = CalendarDateText( _
+        simulationDate, _
+        calendarSystem _
+    )
+
+    lastRow = wsDrones.Cells(wsDrones.Rows.Count, "A").End(xlUp).Row
+
+    Application.ScreenUpdating = False
+
+    For rowNumber = 2 To lastRow
+
+        If Trim$(CStr(wsDrones.Cells(rowNumber, "A").Value)) <> "" Then
+
+            startX = NumericValue(wsDrones.Cells(rowNumber, "B").Value)
+            startY = NumericValue(wsDrones.Cells(rowNumber, "C").Value)
+            startZ = NumericValue(wsDrones.Cells(rowNumber, "D").Value)
+
+            velocityX = NumericValue(wsDrones.Cells(rowNumber, "E").Value)
+            velocityY = NumericValue(wsDrones.Cells(rowNumber, "F").Value)
+            velocityZ = NumericValue(wsDrones.Cells(rowNumber, "G").Value)
+
+            launchDelay = NumericValue( _
+                wsDrones.Cells(rowNumber, "H").Value _
+            )
+
+            agentElapsedSeconds = realElapsedSeconds - launchDelay
+
+            If agentElapsedSeconds < 0 Then
+
+                currentX = startX
+                currentY = startY
+                currentZ = startZ
+
+                wsDrones.Cells(rowNumber, "N").Value = _
+                    "Ожидание запуска"
+
+            Else
+
+                currentX = startX + velocityX * agentElapsedSeconds
+                currentY = startY + velocityY * agentElapsedSeconds
+                currentZ = startZ + velocityZ * agentElapsedSeconds
+
+                If currentZ < 0 Then currentZ = 0
+
+                wsDrones.Cells(rowNumber, "N").Value = _
+                    "Учебное движение"
+
+            End If
+
+            wsDrones.Cells(rowNumber, "I").Value = Round(currentX, 2)
+            wsDrones.Cells(rowNumber, "J").Value = Round(currentY, 2)
+            wsDrones.Cells(rowNumber, "K").Value = Round(currentZ, 2)
+
+            wsDrones.Cells(rowNumber, "L").Value = _
+                Round(Application.Max(agentElapsedSeconds, 0), 0)
+
+            wsDrones.Cells(rowNumber, "M").Value = calendarText
+
+        End If
+
+    Next rowNumber
+
+    wsSettings.Range("B7").Value = simulationDate
+    wsSettings.Range("B8").Value = calendarText
+
+    Application.ScreenUpdating = True
+
+    NextRun = Now + TimeSerial(0, 0, updateStep)
+
+    Application.OnTime _
+        EarliestTime:=NextRun, _
+        Procedure:="UpdateDroneSimulation", _
+        Schedule:=True
+
+    Exit Sub
+
+ErrorHandler:
+
+    Application.ScreenUpdating = True
+    SimulationStarted = False
+
+    MsgBox "Ошибка обновления симуляции: " & _
+           Err.Description, vbCritical
+
+End Sub
+
+'=========================================================
+' ПРЕОБРАЗОВАНИЕ ДАТЫ В ВЫБРАННУЮ КАЛЕНДАРНУЮ СИСТЕМУ
+'=========================================================
+Private Function CalendarDateText( _
+    ByVal sourceDate As Date, _
+    ByVal calendarSystem As String _
+) As String
+
+    Dim julianDate As Date
+    Dim unixSeconds As Double
+    Dim isoWeek As Long
+    Dim isoYear As Long
+
+    Select Case calendarSystem
+
+        Case "ЮЛИАНСКИЙ"
+
+            'Для дат XXI века разница составляет 13 суток.
+            julianDate = DateAdd("d", -13, sourceDate)
+
+            CalendarDateText = _
+                Format$(julianDate, "dd.mm.yyyy hh:nn:ss") & _
+                " — юлианский календарь"
+
+        Case "ISO"
+
+            isoWeek = DatePart( _
+                "ww", _
+                sourceDate, _
+                vbMonday, _
+                vbFirstFourDays _
+            )
+
+            isoYear = ISOWeekYear(sourceDate)
+
+            CalendarDateText = _
+                CStr(isoYear) & "-W" & _
+                Format$(isoWeek, "00") & "-" & _
+                CStr(Weekday(sourceDate, vbMonday)) & _
+                " " & Format$(sourceDate, "hh:nn:ss")
+
+        Case "UNIX"
+
+            unixSeconds = DateDiff( _
+                "s", _
+                DateSerial(1970, 1, 1), _
+                sourceDate _
+            )
+
+            CalendarDateText = _
+                "Unix: " & Format$(unixSeconds, "0")
+
+        Case Else
+
+            CalendarDateText = _
+                Format$(sourceDate, "dd.mm.yyyy hh:nn:ss") & _
+                " — григорианский календарь"
+
+    End Select
+
+End Function
+
+'=========================================================
+' ГОД ISO-НЕДЕЛИ
+'=========================================================
+Private Function ISOWeekYear(ByVal sourceDate As Date) As Long
+
+    Dim thursdayDate As Date
+
+    thursdayDate = _
+        sourceDate - Weekday(sourceDate, vbMonday) + 4
+
+    ISOWeekYear = Year(thursdayDate)
+
+End Function
+
+'=========================================================
+' БЕЗОПАСНОЕ ПРЕОБРАЗОВАНИЕ ЗНАЧЕНИЯ В ЧИСЛО
+'=========================================================
+Private Function NumericValue(ByVal sourceValue As Variant) As Double
+
+    If IsNumeric(sourceValue) Then
+        NumericValue = CDbl(sourceValue)
+    Else
+        NumericValue = 0#
+    End If
+
+End Function

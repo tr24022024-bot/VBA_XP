@@ -1,0 +1,36 @@
+└── .gitattributes
+└── .gitignore
+└── CHANGELOG.md
+└── CONTRIBUTING.md
+└── LICENSE
+└── README.md
+└── TREE.txt
+└── config/
+    └── correction_pairs.csv
+    └── dictionary_sample.txt
+└── docs/
+    └── ARCHITECTURE.md
+    └── INSTALLATION.md
+    └── MACRO_CATALOG.md
+    └── OCR_SETUP.md
+    └── RELEASE_CHECKLIST.md
+    └── SECURITY.md
+└── examples/
+    └── README.md
+└── repository-manifest.json
+└── scripts/
+    └── Export-VbaModules.ps1
+    └── Import-VbaModules.ps1
+└── src/
+    └── excel/
+        └── modCore.bas
+        └── modFormatTimeStatus.bas
+        └── modLevenshtein.bas
+        └── modOCR_Tesseract.bas
+        └── modRandomSelection.bas
+        └── modTextCorrection.bas
+        └── modValueCodec.bas
+    └── word/
+        └── modWordCorrection.bas
+└── tests/
+    └── modSelfTests.bas

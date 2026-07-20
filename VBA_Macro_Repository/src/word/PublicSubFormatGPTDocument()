@@ -1,0 +1,498 @@
+Option Explicit
+Public Sub FormatGPTDocument()
+    Dim doc As Document
+    On Error GoTo ErrorHandler
+    If Documents.Count = 0 Then
+        MsgBox RuNoDocument(), vbExclamation, RuTitle()
+        Exit Sub
+    End If
+    Set doc = ActiveDocument
+    Application.ScreenUpdating = False
+    FormatPage doc
+    FormatBody doc
+    FormatTables doc
+    FormatPictures doc
+    FormatTechnicalLines doc
+    Application.ScreenUpdating = True
+    MsgBox RuCompleted(), vbInformation, RuTitle()
+    Exit Sub
+ErrorHandler:
+    Application.ScreenUpdating = True
+    MsgBox RuError() & CStr(Err.Number) & _
+           " - " & Err.Description, _
+           vbExclamation, _
+           RuTitle()
+End Sub
+Private Sub FormatPage(ByVal doc As Document)
+    Dim sec As Section
+    For Each sec In doc.Sections
+        On Error Resume Next
+        sec.PageSetup.TopMargin = CentimetersToPoints(1)
+        sec.PageSetup.BottomMargin = CentimetersToPoints(1)
+        sec.PageSetup.LeftMargin = CentimetersToPoints(1)
+        sec.PageSetup.RightMargin = CentimetersToPoints(1)
+        On Error GoTo 0
+    Next sec
+End Sub
+Private Sub FormatBody(ByVal doc As Document)
+    Dim rng As Range
+    Set rng = doc.Content
+    On Error Resume Next
+    With rng.Font
+        .Name = "Times New Roman"
+        .Size = 14
+        .Position = 0
+        .Spacing = 0
+        .Superscript = False
+        .Subscript = False
+    End With
+    With rng.ParagraphFormat
+        .FirstLineIndent = CentimetersToPoints(0.27)
+        .LeftIndent = 0
+        .RightIndent = 0
+        .SpaceBefore = 0
+        .SpaceAfter = 0
+        .LineSpacingRule = wdLineSpaceSingle
+    End With
+    On Error GoTo 0
+End Sub
+Private Sub FormatTables(ByVal doc As Document)
+    Dim tbl As Table
+    Dim cel As Cell
+    For Each tbl In doc.Tables
+        On Error Resume Next
+        tbl.Rows.Alignment = wdAlignRowCenter
+        tbl.Rows.SetLeftIndent 0, wdAdjustNone
+        tbl.AllowAutoFit = True
+        tbl.AutoFitBehavior wdAutoFitWindow
+        tbl.TopPadding = 0
+        tbl.BottomPadding = 0
+        tbl.LeftPadding = 0
+        tbl.RightPadding = 0
+        With tbl.Range.Font
+            .Name = "Times New Roman"
+            .Size = 14
+            .Position = 0
+            .Spacing = 0
+            .Superscript = False
+            .Subscript = False
+        End With
+        With tbl.Range.ParagraphFormat
+            .Alignment = wdAlignParagraphCenter
+            .FirstLineIndent = 0
+            .LeftIndent = 0
+            .RightIndent = 0
+            .SpaceBefore = 0
+            .SpaceAfter = 0
+            .LineSpacingRule = wdLineSpaceSingle
+        End With
+        For Each cel In tbl.Range.Cells
+            cel.VerticalAlignment = _
+                wdCellAlignVerticalCenter
+        Next cel
+        On Error GoTo 0
+    Next tbl
+End Sub
+Private Sub FormatPictures(ByVal doc As Document)
+    Dim shp As Shape
+    Dim ils As InlineShape
+    Dim rngPicture As Range
+    Dim maxWidth As Single
+    Dim i As Long
+    For i = doc.Shapes.Count To 1 Step -1
+        Set shp = doc.Shapes(i)
+        On Error Resume Next
+        shp.ConvertToInlineShape
+        On Error GoTo 0
+    Next i
+    For Each ils In doc.InlineShapes
+        Set rngPicture = ils.Range
+        On Error Resume Next
+        With rngPicture.ParagraphFormat
+            .Alignment = wdAlignParagraphCenter
+            .FirstLineIndent = 0
+            .LeftIndent = 0
+            .RightIndent = 0
+            .SpaceBefore = 0
+            .SpaceAfter = 0
+            .LineSpacingRule = wdLineSpaceSingle
+        End With
+        maxWidth = _
+            rngPicture.Sections(1).PageSetup.PageWidth - _
+            rngPicture.Sections(1).PageSetup.LeftMargin - _
+            rngPicture.Sections(1).PageSetup.RightMargin
+        If ils.Width > maxWidth Then
+            ils.LockAspectRatio = -1
+            ils.Width = maxWidth
+        End If
+        On Error GoTo 0
+    Next ils
+End Sub
+Private Sub FormatTechnicalLines(ByVal doc As Document)
+    Dim fullText As String
+    Dim currentCharacter As String
+    Dim lineText As String
+    Dim lineRange As Range
+    Dim basePosition As Long
+    Dim lineStart As Long
+    Dim textLength As Long
+    Dim i As Long
+    fullText = doc.Content.Text
+    basePosition = doc.Content.Start
+    textLength = Len(fullText)
+    lineStart = 1
+    For i = 1 To textLength + 1
+        If i <= textLength Then
+            currentCharacter = Mid$(fullText, i, 1)
+        Else
+            currentCharacter = vbNullString
+        End If
+        If IsLineEnd( _
+            currentCharacter, _
+            i, _
+            textLength) Then
+            If i > lineStart Then
+                Set lineRange = doc.Range( _
+                    Start:=basePosition + lineStart - 1, _
+                    End:=basePosition + i - 1)
+                lineText = NormalizeLine( _
+                    lineRange.Text)
+                If IsTechnicalLine(lineText) Then
+                    ApplyTechnicalStyle lineRange
+                End If
+            End If
+            lineStart = i + 1
+        End If
+    Next i
+End Sub
+Private Function IsLineEnd( _
+    ByVal characterText As String, _
+    ByVal positionNumber As Long, _
+    ByVal textLength As Long) As Boolean
+    If positionNumber > textLength Then
+        IsLineEnd = True
+        Exit Function
+    End If
+    If characterText = Chr$(13) Then
+        IsLineEnd = True
+        Exit Function
+    End If
+    If characterText = Chr$(11) Then
+        IsLineEnd = True
+        Exit Function
+    End If
+    If characterText = Chr$(10) Then
+        IsLineEnd = True
+        Exit Function
+    End If
+    If characterText = Chr$(7) Then
+        IsLineEnd = True
+        Exit Function
+    End If
+End Function
+Private Function NormalizeLine( _
+    ByVal sourceText As String) As String
+    Dim resultText As String
+    Dim firstCharacter As String
+    Dim cleanAgain As Boolean
+    resultText = sourceText
+    resultText = Replace( _
+        resultText, ChrW(160), " ")
+    resultText = Replace( _
+        resultText, ChrW(8239), " ")
+    resultText = Replace( _
+        resultText, vbTab, " ")
+    resultText = Trim$(resultText)
+    Do
+        cleanAgain = False
+        If Len(resultText) >= 2 Then
+            If Left$(resultText, 2) = "- " Then
+                resultText = Trim$( _
+                    Mid$(resultText, 3))
+                cleanAgain = True
+            End If
+        End If
+        If Len(resultText) > 0 Then
+            firstCharacter = Left$(resultText, 1)
+            If firstCharacter = "`" Then
+                resultText = Trim$( _
+                    Mid$(resultText, 2))
+                cleanAgain = True
+            ElseIf firstCharacter = ">" Then
+                resultText = Trim$( _
+                    Mid$(resultText, 2))
+                cleanAgain = True
+            ElseIf firstCharacter = "*" Then
+                resultText = Trim$( _
+                    Mid$(resultText, 2))
+                cleanAgain = True
+            ElseIf firstCharacter = Chr$(34) Then
+                resultText = Trim$( _
+                    Mid$(resultText, 2))
+                cleanAgain = True
+            ElseIf firstCharacter = "'" Then
+                resultText = Trim$( _
+                    Mid$(resultText, 2))
+                cleanAgain = True
+            End If
+        End If
+    Loop While cleanAgain = True
+    NormalizeLine = resultText
+End Function
+Private Function IsTechnicalLine( _
+    ByVal sourceText As String) As Boolean
+    Dim txt As String
+    txt = LCase$(Trim$(sourceText))
+    If Len(txt) = 0 Then Exit Function
+    If txt = "user,name" Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If txt = "..." Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If txt = "(" Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If txt = ")" Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "git ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "gh ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "remote origin") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText( _
+        txt, _
+        "repository permissions") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText( _
+        txt, _
+        "semantic-translator_v") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "setlocal") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "endlocal") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "set ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "if ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "for ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "echo") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "robocopy ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "xcopy ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "copy ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "move ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "mkdir ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "rmdir ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "del ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "dir ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "cd ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "call ") Then
+       IsTechnicalLine = True
+        Exit Function
+    End If
+    If txt = "pause" Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "python ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "pip ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "npm ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "npx ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If StartsWithText(txt, "docker ") Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If InStr(1, txt, "https://", vbTextCompare) > 0 Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If InStr(1, txt, "http://", vbTextCompare) > 0 Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If InStr(1, txt, ":\", vbTextCompare) > 0 Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If InStr( _
+        1, _
+        txt, _
+        "\semantic-translator", _
+        vbTextCompare) > 0 Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If InStr(1, txt, "%dest%", vbTextCompare) > 0 Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If InStr(1, txt, "%root%", vbTextCompare) > 0 Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If InStr(1, txt, "!v!", vbTextCompare) > 0 Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+    If InStr(1, txt, "!n!", vbTextCompare) > 0 Then
+        IsTechnicalLine = True
+        Exit Function
+    End If
+End Function
+Private Function StartsWithText( _
+    ByVal fullText As String, _
+    ByVal startText As String) As Boolean
+    If Len(fullText) < Len(startText) Then
+        StartsWithText = False
+        Exit Function
+    End If
+    StartsWithText = _
+        Left$(fullText, Len(startText)) = startText
+End Function
+Private Sub ApplyTechnicalStyle( _
+    ByVal technicalRange As Range)
+    On Error Resume Next
+    With technicalRange.Font
+        .Name = "Times New Roman"
+        .Size = 14
+        .Bold = False
+        .Italic = False
+        .Color = wdColorBlue
+        .Underline = wdUnderlineSingle
+        .Position = 0
+        .Spacing = 0
+        .Superscript = False
+        .Subscript = False
+    End With
+    technicalRange.HighlightColorIndex = _
+        wdNoHighlight
+    With technicalRange.ParagraphFormat
+        .FirstLineIndent = 0
+        .LeftIndent = 0
+        .RightIndent = 0
+        .SpaceBefore = 0
+        .SpaceAfter = 0
+        .LineSpacingRule = wdLineSpaceSingle
+    End With
+    On Error GoTo 0
+End Sub
+Private Function RuTitle() As String
+    Dim s As String
+    s = ChrW(1056) & ChrW(1077)
+    s = s & ChrW(1076) & ChrW(1072)
+    s = s & ChrW(1082) & ChrW(1090)
+    s = s & ChrW(1086) & ChrW(1088)
+    s = s & " GPT"
+    RuTitle = s
+End Function
+Private Function RuCompleted() As String
+    Dim s As String
+    s = ChrW(1044) & ChrW(1086)
+    s = s & ChrW(1082) & ChrW(1091)
+    s = s & ChrW(1084) & ChrW(1077)
+    s = s & ChrW(1085) & ChrW(1090)
+    s = s & " "
+    s = s & ChrW(1086) & ChrW(1090)
+    s = s & ChrW(1092) & ChrW(1086)
+    s = s & ChrW(1088) & ChrW(1084)
+    s = s & ChrW(1072) & ChrW(1090)
+    s = s & ChrW(1080) & ChrW(1088)
+    s = s & ChrW(1086) & ChrW(1074)
+    s = s & ChrW(1072) & ChrW(1085)
+    s = s & "."
+    RuCompleted = s
+End Function
+Private Function RuNoDocument() As String
+    Dim s As String
+    s = ChrW(1053) & ChrW(1077)
+    s = s & ChrW(1090) & " "
+    s = s & ChrW(1086) & ChrW(1090)
+    s = s & ChrW(1082) & ChrW(1088)
+    s = s & ChrW(1099) & ChrW(1090)
+    s = s & ChrW(1086) & ChrW(1075)
+    s = s & ChrW(1086) & " "
+    s = s & ChrW(1076) & ChrW(1086)
+    s = s & ChrW(1082) & ChrW(1091)
+    s = s & ChrW(1084) & ChrW(1077)
+    s = s & ChrW(1085) & ChrW(1090)
+    s = s & ChrW(1072) & "."
+    RuNoDocument = s
+End Function
+Private Function RuError() As String
+    Dim s As String
+    s = ChrW(1054) & ChrW(1096)
+    s = s & ChrW(1080) & ChrW(1073)
+    s = s & ChrW(1082) & ChrW(1072)
+    s = s & ": "
+    RuError = s
+End Function
